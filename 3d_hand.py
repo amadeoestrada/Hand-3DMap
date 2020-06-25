@@ -189,23 +189,73 @@ coord1t = coord1.T
 coord2t = coord2.T
 
 E, mask2 = cv2.findEssentialMat(coord1, coord2, focal=1.0, pp=(0., 0.), method=cv2.RANSAC, prob=0.999, threshold=3.0)
-points, R, t, mask2 = cv2.recoverPose(E, coord1, coord2)
 
-R1, R2, P1, P2, Q, alpha1, alpha2 = cv2.stereoRectify(K_l,D_l,K_r,D_r,(1920,1080),R,t)
+E1 = np.zeros((3, 3), dtype=np.float32)
+
+E1 = K_r.T
+E1 = E1.dot(F)
+E1 = K_l.dot(E1)
+
+#R2, t, E, F = cv2.stereoCalibrate()
+points, R, t, mask2 = cv2.recoverPose(E1, coord1, coord2)
+points, R3, t3, mask2 = cv2.recoverPose(E, coord1, coord2)
+
+
+R1, R2, P1, P2, Q, alpha1, alpha2 = cv2.stereoRectify(K_l,D_l,K_r,D_r,(1920,1080),R3,t3,flags = cv2.CALIB_ZERO_DISPARITY)
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+R5 = np.zeros((3, 3), dtype=np.float32)
+R5 = R2
 
-mapx1, mapy1 = cv2.initUndistortRectifyMap(K_l, D_l, R1, P1,
+#R3[0][0] = R2[0][2]
+#R3[1][0] = R2[1][2]
+#R3[2][0] = R2[2][2]
+#R2[0][2] = R2[0][0]
+#R2[1][2] = R2[1][0]
+#R2[2][2] = R2[2][0]
+#R2[0][0] = R3[0][0]
+#R2[1][0] = R3[1][0]
+#R2[2][0] = R3[2][0]
+
+#R2 = R2.T
+
+#R3[0][1] = R2[0][1]
+#R2[0][1] = R2[2][1]
+#R2[0][1] = R3[0][1]
+
+#R3[1][0] = R2[2][1]
+#R2[2][1] = R2[1][0]
+#R2[2][1] = R3[1][0]
+
+mapx1, mapy1 = cv2.initUndistortRectifyMap(K_l, D_l, R1, K_l,
+                                               #(1920,1080),
                                                img[0].shape[:2],
                                                cv2.CV_32F)
-mapx2, mapy2 = cv2.initUndistortRectifyMap(K_r, D_r, R2, P2,
+mapx2, mapy2 = cv2.initUndistortRectifyMap(K_r, D_r, R2, K_r,
+                                               #(1920,1080),
                                                img[0].shape[:2],
                                                cv2.CV_32F)
+
+
 
 img_rect1 = cv2.remap(img[0], mapx1, mapy1, cv2.INTER_LINEAR)
 img_rect2 = cv2.remap(img[1], mapx2, mapy2, cv2.INTER_LINEAR)
 
+#img_rect2 = cv2.flip(img_rect2, 1)
+
+# draw the images side by side
+total_size = (max(img_rect1.shape[0], img_rect2.shape[0]),
+              img_rect1.shape[1] + img_rect2.shape[1], 3)
+img_8 = np.zeros(total_size, dtype=np.uint8)
+img_8[:img_rect1.shape[0], :img_rect1.shape[1]] = img_rect1
+img_8[:img_rect2.shape[0], img_rect1.shape[1]:] = img_rect2
+
+# draw horizontal lines every 25 px accross the side by side image
+for i in range(20, img_8.shape[0], 25):
+    cv2.line(img_8, (0, i), (img_8.shape[1], i), (255, 0, 0))
+
 cv2.imshow('imgRectified1', img_rect1)
 cv2.imshow('imgRectified2', img_rect2)
+cv2.imshow('imgRectified', img_8)
 
 cv2.imwrite(workingFolder + "/results/img_rect1.png", img_rect1)
 cv2.imwrite(workingFolder + "/results/img_rect2.png", img_rect2)
