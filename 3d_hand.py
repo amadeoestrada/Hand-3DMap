@@ -105,8 +105,8 @@ for index in img:
     photo.append(cv2.bitwise_and(index, index, mask=mask))
 
 # Show the results
-cv2.imshow('mask1', photo[0])
-cv2.imshow('mask2', photo[1])
+#cv2.imshow('mask1', photo[0])
+#cv2.imshow('mask2', photo[1])
 
 cv2.imwrite(workingFolder + "/results/photo1.png", photo[0])
 cv2.imwrite(workingFolder + "/results/photo2.png", photo[1])
@@ -123,15 +123,21 @@ coord2 = np.array([[928, 534], [882, 633], [970, 628], [754, 443], [853,642],[83
 
 #coord_h1 = np.array([[1152, 407], [1055, 534], [1171, 518], [960, 273]])
 #coord_h2 = np.array([[928, 534], [882, 633], [970, 628], [754, 443]])
-coord_h1 = np.array([[1152, 407]])
-coord_h2 = np.array([[928, 534]])
+coord_h1 = np.array([[1152, 407],[1091,458],[533,122]])
+coord_h2 = np.array([[928, 534],[893,572],[1729,225]])
 
 # Use epipoles to find the matching features
 F, mask = cv2.findFundamentalMat(coord1, coord2, cv2.FM_8POINT)
 
-# Extract the camera matrix K from the parameters file:
-#filename = workingFolder + "/fund_mat.txt"
-#F = np.loadtxt(filename, dtype='float', delimiter=',')
+# Extract the camera matrix K from the parameters file, for each camera:
+filename = workingFolder + "/cameraMatrixL.txt"
+K_l = np.loadtxt(filename, dtype='float', delimiter=',')
+filename = workingFolder + "/cameraMatrixR.txt"
+K_r = np.loadtxt(filename, dtype='float', delimiter=',')
+filename = workingFolder + "/cameraDistortionL.txt"
+D_l = np.loadtxt(filename, dtype='float', delimiter=',')
+filename = workingFolder + "/cameraDistortionR.txt"
+D_r = np.loadtxt(filename, dtype='float', delimiter=',')
 
 # Function to draw epipolar lines and match circles to images.
 def drawlines(img_a, img_b, lines, pts1, pts2):
@@ -172,92 +178,52 @@ lines2 = cv2.computeCorrespondEpilines(coord_h2.reshape(-1, 1, 2), 2, F)
 lines2 = lines2.reshape(-1, 3)
 img3, img4 = drawlines(img[0], img[1], lines2, coord_h1, coord_h2)
 
-# Show plot of the two epipolar line images
-#plt.subplot(121),plt.imshow(img5)
-#plt.subplot(122),plt.imshow(img3)
-#plt.show()
-
-# Press 'q' to exit each image window
-cv2.waitKey(0)
-cv2.destroyAllWindows()
 # Save results in results folder
 cv2.imwrite(workingFolder + "/results/img1.png", img5)
 cv2.imwrite(workingFolder + "/results/img2.png", img3)
 
+cv2.imshow('imgNOTRectified1', img3)
+cv2.imshow('imgNOTRectified2', img5)
+
+coord1t = coord1.T
+coord2t = coord2.T
+
+E, mask2 = cv2.findEssentialMat(coord1, coord2, focal=1.0, pp=(0., 0.), method=cv2.RANSAC, prob=0.999, threshold=3.0)
+points, R, t, mask2 = cv2.recoverPose(E, coord1, coord2)
+
+R1, R2, P1, P2, Q, alpha1, alpha2 = cv2.stereoRectify(K_l,D_l,K_r,D_r,(1920,1080),R,t)
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+mapx1, mapy1 = cv2.initUndistortRectifyMap(K_l, D_l, R1, P1,
+                                               img[0].shape[:2],
+                                               cv2.CV_32F)
+mapx2, mapy2 = cv2.initUndistortRectifyMap(K_r, D_r, R2, P2,
+                                               img[0].shape[:2],
+                                               cv2.CV_32F)
+
+img_rect1 = cv2.remap(img[0], mapx1, mapy1, cv2.INTER_LINEAR)
+img_rect2 = cv2.remap(img[1], mapx2, mapy2, cv2.INTER_LINEAR)
+
+cv2.imshow('imgRectified1', img_rect1)
+cv2.imshow('imgRectified2', img_rect2)
+
+cv2.imwrite(workingFolder + "/results/img_rect1.png", img_rect1)
+cv2.imwrite(workingFolder + "/results/img_rect2.png", img_rect2)
+
+#World coordinates in pixels
+XYZ = np.array([[0],[0],[0],[0]])
+#xyd = np.array([[1091],[458],[198],[1]])
+xyd = np.array([[533],[1729],[2000],[1]])
+XYZ = Q.dot(xyd)
+XYZ[0] = XYZ[0]/XYZ[3]
+XYZ[1] = XYZ[1]/XYZ[3]
+XYZ[2] = XYZ[2]/XYZ[3]
+
+
+# Press 'q' to exit each image window
+cv2.waitKey(0)
+cv2.destroyAllWindows()
 
 
 
-# - - - - - - - - - START of the programming part that finds F using OpenCV tools - - - - - - - - - - - - -
-
-# Extract the coordinates from the image points list (3 dimension array)
-right_coord = np.array(imgpoints_r[0])  # convert from list to array
-right_coord = np.squeeze(right_coord)  # Convert to 2 dimension array
-# Vertically flip array. Checker board pattern results are ordered from-bottom right to top-left
-coord_right = np.flipud(right_coord)
-
-# Extract the coordinates from the image points list (3 dimension array)
-left_coord = np.array(imgpoints_l[0])  # convert from list to array
-left_coord = np.squeeze(left_coord)  # Convert to 2 dimension array
-# Vertically flip array. Checker board pattern results are ordered from-bottom right to top-left
-coord_left = np.flipud(left_coord)
-
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Find the fundamental matrix and use OpenCV routine for comparison
-F1, mask = cv2.findFundamentalMat(right_coord, left_coord, cv2.FM_8POINT)
-
-# Select only inlier points
-coord_right = coord_right[mask.ravel() == 1]
-coord_left = coord_left[mask.ravel() == 1]
-
-# Function to draw epipolar lines and match circles to images.
-def drawlines(img_a, img_b, lines, pts1, pts2):
-    """ img_a - image on which we draw the epilines for the points in img_b lines - corresponding epilines
-        The lines argument contains an equation for each epipolar line. The for cicle below takes the iterables
-        lines, pts1, and pts2 into a tuple assigned to r[0], r[1], r[2], pt1, pt2, for each for iteration.
-        Therefore, each iteration will draw a line from the extreme right (x = 0) to the extreme left (x = c)
-        and the correspondent coordinates of the matching points on the two images.
-    """
-    # Assign row, column and color information
-    r, c, color_info = img_a.shape
-
-    for r, pt1, pt2 in zip(lines, pts1, pts2):
-        # Use random color for each epipolar line
-        color = tuple(np.random.randint(0, 255, 3).tolist())
-        # Set the start of line to the extreme left of the image
-        x0, y0 = map(int, [0, -r[2] / r[1]])
-        # Set the end of the line to the extreme right of the image
-        x1, y1 = map(int, [c, -(r[2] + r[0] * c) / r[1]])
-        # Draw the line using the coordinates above
-        img_a = cv2.line(img_a, (x0, y0), (x1, y1), color, 1)
-        # Draw the matching coordinates for each image
-        img_a = cv2.circle(img_a, tuple(pt1), 5, color, -1)
-        img_b = cv2.circle(img_b, tuple(pt2), 5, color, -1)
-    return img_a, img_b
-
-# Find epilines corresponding to points in right image (second image) and
-# drawing its lines on left image
-lines1 = cv2.computeCorrespondEpilines(coord_left.reshape(-1, 1, 2), 2, F1)
-lines1 = lines1.reshape(-1, 3)
-
-# noinspection PyUnboundLocalVariable
-img5, img6 = drawlines(img1, img2, lines1, coord_right, coord_left)
-
-# Find epilines corresponding to points in left image (first image) and
-# drawing its lines on right image
-lines2 = cv2.computeCorrespondEpilines(coord_right.reshape(-1, 1, 2), 1, F1)
-lines2 = lines2.reshape(-1, 3)
-img3, img4 = drawlines(img2, img1, lines2, coord_left, coord_right)
-
-# Show plot of the two epipolar line images
-plt.subplot(121),plt.imshow(img5)
-plt.subplot(122),plt.imshow(img3)
-plt.show()
-
-# Save results in results folder
-cv2.imwrite(workingFolder + "/results/img1.png", img1)
-cv2.imwrite(workingFolder + "/results/img2.png", img2)
-
-
-# - - - - - - - - - END of the programming part that finds F using OpenCV tools - - - - - - - - - - - - -
+# - - - - - - - - - END of the program - - - - - - - - - - - - -
