@@ -192,36 +192,15 @@ K_r = np.loadtxt(filename, dtype='float', delimiter=',')
     K =     [    0    fy    cy  ]               beta = fy
             [    0     0     1  ]               cx = u0, cy = v0
     
-    The t vector that points from the left camera to the right camera can 
-    be found with the following equations.
-    
-    Left camera is camera 1. Right camera is camera 2.
-    
-    F = H = [h1_vec, h2_vec, h3_vec] = s · K · [r1_vec, r2_vec, t_vec]
-    
-    where: F is the fundamental matrix.
-            H is a homography
-            h*_vec is a vector 3 x 1
-            s is the scale factor
-            K is the intrinsic parameters matrix
-            r*_vec is the rotation vector for camera 1 and camera 2
-            t_vec points from camera 1 to camera 2
-    then
-            t_vec =  lambda · M^-1 · h3_vec         where: lambda = 1/s
-            
-            but the scale factor is one. Then:
-            
-                        
-            t_vec = M^-1 · [ F13, F23, F33 ]  <- is a vector of 1 x 3 
-            
-            The result vector 3 x 1 will need to be flipped vertically. 
 """
 
+# Finding the essential matrix from the fundamental matrix
+K_rT = K_r.T
+E = K_rT.dot(F)
+E = E.dot(K_l)
+
 # Translation vector from computation
-K_inv = np.linalg.inv(K_l)
-h3 = np.array([[F[0][2], F[1][2], F[2][2]]])
-t_vec = K_inv.dot(h3.T)
-t_vec = np.flipud(t_vec)
+R1x, R2x, t_vec = cv2.decomposeEssentialMat(E)
 
 
 # create 3d point arrays
