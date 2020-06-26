@@ -122,14 +122,16 @@ coord_p1 = np.array([[1148, 603],[1061,539],[1155,410], [1244, 526],
                         [1289, 414], [1312, 350], [1330, 279],  # Coordinates thumb
                         [1126, 340], [1096, 288], [1060,213], [998, 143],  # Coordinates index
                         [887, 222], [959, 273], [1009, 331], [1059, 392],  # Coordinates middle
-                        [832, 391], [892, 418], [961, 449], [1016, 472],  # Coordinates ring
-                        [840, 590], [900, 578], [954, 564], [1007, 552]])  # Coordinates  pinkie
+                        [1029, 485], [961, 449], [892, 418], [832, 391],  # Coordinates ring
+                        [1006, 561], [957, 565], [903, 575], [839, 587],  # Coordinates  pinkie
+                        [1257, 453]])     # Extra
 coord_p2 = np.array([[980, 695], [885,636],[931, 535], [1026, 633],
                         [1037, 533], [1012, 477], [999, 415],  # Coordinates thumb
                         [899, 480], [860, 436], [825, 398], [785, 353],  # Coordinates index
-                        [856, 523], [805, 482], [756, 443], [717, 414],  # Coordinates middle
-                        [836, 582], [787, 565], [727, 543], [695, 527],  # Coordinates ring
-                        [852, 640], [811, 647], [711, 653], [734, 656]])  # Coordinates pinkie
+                        [717, 414], [756, 443], [805, 482], [856, 523],  # Coordinates middle
+                        [851, 588], [787, 565], [727, 543], [695, 527],  # Coordinates ring
+                        [852, 640], [811, 647], [772, 653], [734, 656],  # Coordinates pinkie
+                        [1033, 565]])     # Extra
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -220,11 +222,11 @@ for pt1, pt2 in zip(coord_p1, coord_p2):
     l2[1] = (pt2[1] - K_r[1][2]) / K_r[1][1]
 
     # calculate theta
-    theta1 = math.atan(122 / 533)
-    theta2 = math.atan(225 / 1729)
+    theta1 = math.atan(pt1[1] / pt1[0])
+    theta2 = math.atan(pt2[1] / pt2[0])
 
     # Compute the magnitude of L1
-    L1_mag = (np.linalg.norm(t_vec)) * math.sin(theta1) / math.sin(theta1 - theta2)
+    L1_mag = (np.linalg.norm(t_vec)) * math.sin(theta1) / math.sin(theta1 + theta2)
 
     # compute 3D reconstruction
     L1 = np.ones((3, 1), dtype=np.float32)
@@ -255,22 +257,58 @@ zline = np.linspace(z_points[2], z_points[3], num=100)
 yline = np.linspace(y_points[2], y_points[3], num=100)
 xline = np.linspace(x_points[2], x_points[3], num=100)
 ax.plot3D(xline, yline, zline, 'gray')
-# draw palm line 2
+# draw palm line 4
 zline = np.linspace(z_points[3], z_points[0], num=100)
 yline = np.linspace(y_points[3], y_points[0], num=100)
 xline = np.linspace(x_points[3], x_points[0], num=100)
 ax.plot3D(xline, yline, zline, 'red')
+# draw palm line 5
+zline = np.linspace(z_points[7], z_points[14], num=100)
+yline = np.linspace(y_points[7], y_points[14], num=100)
+xline = np.linspace(x_points[7], x_points[14], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw palm line 6
+zline = np.linspace(z_points[14], z_points[15], num=100)
+yline = np.linspace(y_points[14], y_points[15], num=100)
+xline = np.linspace(x_points[14], x_points[15], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw palm line 7
+zline = np.linspace(z_points[15], z_points[19], num=100)
+yline = np.linspace(y_points[15], y_points[19], num=100)
+xline = np.linspace(x_points[15], x_points[19], num=100)
+ax.plot3D(xline, yline, zline, 'red')
 
+# draw palm line 8
+zline = np.linspace(z_points[3], z_points[23], num=100)
+yline = np.linspace(y_points[3], y_points[23], num=100)
+xline = np.linspace(x_points[3], x_points[23], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw palm line 9
+zline = np.linspace(z_points[0], z_points[19], num=100)
+yline = np.linspace(y_points[0], y_points[19], num=100)
+xline = np.linspace(x_points[0], x_points[19], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw palm line 8
+zline = np.linspace(z_points[7], z_points[23], num=100)
+yline = np.linspace(y_points[7], y_points[23], num=100)
+xline = np.linspace(x_points[7], x_points[23], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+
+# draw thumb line 1
+zline = np.linspace(z_points[23], z_points[4], num=100)
+yline = np.linspace(y_points[23], y_points[4], num=100)
+xline = np.linspace(x_points[23], x_points[4], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
 # draw thumb line 1
 zline = np.linspace(z_points[4], z_points[5], num=100)
 yline = np.linspace(y_points[4], y_points[5], num=100)
 xline = np.linspace(x_points[4], x_points[5], num=100)
-ax.plot3D(xline, yline, zline, 'red')
+ax.plot3D(xline, yline, zline, 'blue')
 # draw thumb line 2
 zline = np.linspace(z_points[5], z_points[6], num=100)
 yline = np.linspace(y_points[5], y_points[6], num=100)
 xline = np.linspace(x_points[5], x_points[6], num=100)
-ax.plot3D(xline, yline, zline, 'red')
+ax.plot3D(xline, yline, zline, 'blue')
 
 # draw index line 1
 zline = np.linspace(z_points[7], z_points[8], num=100)
