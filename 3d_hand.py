@@ -39,9 +39,6 @@ img = []
 photo = []
 # ------------------------------------------
 
-# termination criteria
-criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, dimension, 0.001)
-
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 objp = np.zeros((nRows * nCols, 3), np.float32)
 objp[:, :2] = np.mgrid[0:nCols, 0:nRows].T.reshape(-1, 2)
@@ -50,7 +47,6 @@ objp[:, :2] = np.mgrid[0:nCols, 0:nRows].T.reshape(-1, 2)
 objpoints = []  # 3d point in real world space
 imgpoints_r = []  # 2d points in image plane. RIGHT
 imgpoints_l = []  # 2d points in image plane. LEFT
-
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Process the hand image files
@@ -105,14 +101,12 @@ for index in img:
     # Apply masl to the original imaage
     photo.append(cv2.bitwise_and(index, index, mask=mask))
 
-# Show the results
-#cv2.imshow('mask1', photo[0])
-#cv2.imshow('mask2', photo[1])
-
-cv2.imwrite(workingFolder + "/results/photo1.png", photo[0])
-cv2.imwrite(workingFolder + "/results/photo2.png", photo[1])
+# Save the filtered results in a folder
+cv2.imwrite(workingFolder + "/results/photo_filter1.png", photo[0])
+cv2.imwrite(workingFolder + "/results/photo_filter2.png", photo[1])
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Define the coordinates for the calibration points
 
 coord1 = np.array([[1152, 407], [1055, 534], [1171, 518], [960, 273],[1007,552],
                    [1016,472],[1059,394],[1126,341],[1149,602],[1245,526],[1091,458],
@@ -122,10 +116,8 @@ coord2 = np.array([[928, 534], [882, 633], [970, 628], [754, 443], [853,642],[83
                    [848,525],[899,480],[980,695],[1026,634],[893,572],[1153,857],[1774,500],
                    [1729,225],[1355,274],[1350,618],[1783,128],[1786,321],[912,310],[859,436]])
 
-#coord_h1 = np.array([[1152, 407], [1055, 534], [1171, 518], [960, 273]])
-#coord_h2 = np.array([[928, 534], [882, 633], [970, 628], [754, 443]])
-
-# Coordinates palm
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Define the coordinates for the palm and fingers
 coord_p1 = np.array([[1148, 603],[1061,539],[1155,410], [1244, 526],
                         [1289, 414], [1312, 350], [1330, 279],  # Coordinates thumb
                         [1126, 340], [1096, 288], [1060,213], [998, 143],  # Coordinates index
@@ -139,11 +131,10 @@ coord_p2 = np.array([[980, 695], [885,636],[931, 535], [1026, 633],
                         [836, 582], [787, 565], [727, 543], [695, 527],  # Coordinates ring
                         [852, 640], [811, 647], [711, 653], [734, 656]])  # Coordinates pinkie
 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-# Use epipoles to find the matching features
+# Find F
 F, mask = cv2.findFundamentalMat(coord1, coord2, cv2.FM_8POINT)
-
-
 
 # Function to draw epipolar lines and match circles to images.
 def drawlines(img_a, img_b, lines, pts1, pts2):
@@ -176,33 +167,61 @@ lines1 = cv2.computeCorrespondEpilines(coord_p1.reshape(-1, 1, 2), 1, F)
 lines1 = lines1.reshape(-1, 3)
 
 # noinspection PyUnboundLocalVariable
-img5, img6 = drawlines(img[1], img[0], lines1, coord_p2, coord_p1)
+img5, img6 = drawlines(photo[1], photo[0], lines1, coord_p2, coord_p1)
 
 # Find epilines corresponding to points in left image (first image) and
 # drawing its lines on right image
 lines2 = cv2.computeCorrespondEpilines(coord_p2.reshape(-1, 1, 2), 2, F)
 lines2 = lines2.reshape(-1, 3)
-img3, img4 = drawlines(img[0], img[1], lines2, coord_p1, coord_p2)
+img3, img4 = drawlines(photo[0], photo[1], lines2, coord_p1, coord_p2)
 
-# Save results in results folder
-cv2.imwrite(workingFolder + "/results/img1.png", img5)
-cv2.imwrite(workingFolder + "/results/img2.png", img3)
+# Save the epipole lines and dots in the results folder
+cv2.imwrite(workingFolder + "/results/photo_epipole1.png", img5)
+cv2.imwrite(workingFolder + "/results/photo_epipole2.png", img3)
 
-cv2.imshow('Epipole lines 1', img3)
-cv2.imshow('Epipole lines 2', img5)
-
-# Calculate depth from the K and diff
-
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Extract the camera matrix K from the parameters file, for each camera:
 filename = workingFolder + "/cameraMatrixL.txt"
 K_l = np.loadtxt(filename, dtype='float', delimiter=',')
 filename = workingFolder + "/cameraMatrixR.txt"
 K_r = np.loadtxt(filename, dtype='float', delimiter=',')
 
-#       [   fx     0    cx  ]      where    alpha = fx
-# K =   [    0    fy    cy  ]               beta = fy
-#       [    0     0     1  ]               cx = u0, cy = v0
+"""
+    The intrinsic parameters matrix is:
+            [   fx     0    cx  ]      where    alpha = fx
+    K =     [    0    fy    cy  ]               beta = fy
+            [    0     0     1  ]               cx = u0, cy = v0
+    
+    The t vector that points from the left camera to the right camera can 
+    be found with the following equations.
+    
+    Left camera is camera 1. Right camera is camera 2.
+    
+    F = H = [h1_vec, h2_vec, h3_vec] = s · K · [r1_vec, r2_vec, t_vec]
+    
+    where: F is the fundamental matrix.
+            H is a homography
+            h*_vec is a vector 3 x 1
+            s is the scale factor
+            K is the intrinsic parameters matrix
+            r*_vec is the rotation vector for camera 1 and camera 2
+            t_vec points from camera 1 to camera 2
+    then
+            t_vec =  lambda · M^-1 · h3_vec         where: lambda = 1/s
+            
+            but the scale factor is one. Then:
+            
+                        
+            t_vec = M^-1 · [ F13, F23, F33 ]  <- is a vector of 1 x 3 
+            
+            The result vector 3 x 1 will need to be flipped vertically. 
+"""
 
+# Translation vector from computation
+K_inv = np.linalg.inv(K_l)
+h3 = np.array([[F[0][2], F[1][2], F[2][2]]])
+t_vec = K_inv.dot(h3.T)
+t_vec = np.flipud(t_vec)
 
 
 # create 3d point arrays
@@ -212,8 +231,6 @@ z_points = np.zeros((coord_p1.shape[0]), dtype=np.float32)
 i = 0
 
 for pt1, pt2 in zip(coord_p1, coord_p2):
-    # direction vector of point 1 in image 1
-    #p1 = pt1
     l1 = np.ones((3, 1), dtype=np.float32)
     l1[0] = (pt1[0] - K_l[0][2]) / K_l[0][0]
     l1[1] = (pt1[1] - K_l[1][2]) / K_l[1][1]
@@ -227,12 +244,8 @@ for pt1, pt2 in zip(coord_p1, coord_p2):
     theta1 = math.atan(122 / 533)
     theta2 = math.atan(225 / 1729)
 
-    # Translation vector from camera 1 to camera 2
-    t = np.zeros((3, 1), dtype=np.float32)
-    t[0][0] = 1
-
     # Compute the magnitude of L1
-    L1_mag = (np.linalg.norm(t)) * math.sin(theta1) / math.sin(theta1 - theta2)
+    L1_mag = (np.linalg.norm(t_vec)) * math.sin(theta1) / math.sin(theta1 - theta2)
 
     # compute 3D reconstruction
     L1 = np.ones((3, 1), dtype=np.float32)
@@ -243,6 +256,9 @@ for pt1, pt2 in zip(coord_p1, coord_p2):
     y_points[i] = L1[1][0]
     z_points[i] = L1[2][0]
     i += 1
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Plot the results
 
 ax = plt.axes(projection='3d')
 # draw palm line 1
@@ -265,6 +281,7 @@ zline = np.linspace(z_points[3], z_points[0], num=100)
 yline = np.linspace(y_points[3], y_points[0], num=100)
 xline = np.linspace(x_points[3], x_points[0], num=100)
 ax.plot3D(xline, yline, zline, 'red')
+
 # draw thumb line 1
 zline = np.linspace(z_points[4], z_points[5], num=100)
 yline = np.linspace(y_points[4], y_points[5], num=100)
@@ -275,6 +292,7 @@ zline = np.linspace(z_points[5], z_points[6], num=100)
 yline = np.linspace(y_points[5], y_points[6], num=100)
 xline = np.linspace(x_points[5], x_points[6], num=100)
 ax.plot3D(xline, yline, zline, 'red')
+
 # draw index line 1
 zline = np.linspace(z_points[7], z_points[8], num=100)
 yline = np.linspace(y_points[7], y_points[8], num=100)
@@ -340,8 +358,7 @@ xline = np.linspace(x_points[21], x_points[22], num=100)
 ax.plot3D(xline, yline, zline, 'blue')
 
 # -- Set the Position Relative to Camera 3D Plot
-#ax = plt.axes(projection="3d")
-plt.suptitle('Position Relative to Camera Plot')
+plt.suptitle('Position is Relative to Camera')
 # -- Display the origin as a pink cross
 ax.scatter3D(x_points, y_points, z_points, c='b', marker='P')
 plt.show()
@@ -350,6 +367,4 @@ plt.show()
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
-
-
-# - - - - - - - - - END of the program - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - END of the program - - - - - -  - - - - - - - - - - - -
