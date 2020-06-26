@@ -18,6 +18,7 @@ import numpy as np
 import cv2
 import glob
 import sys
+import math
 from matplotlib import pyplot as plt
 
 # ---------------------- PARAMETERS SET
@@ -123,21 +124,26 @@ coord2 = np.array([[928, 534], [882, 633], [970, 628], [754, 443], [853,642],[83
 
 #coord_h1 = np.array([[1152, 407], [1055, 534], [1171, 518], [960, 273]])
 #coord_h2 = np.array([[928, 534], [882, 633], [970, 628], [754, 443]])
-coord_h1 = np.array([[1152, 407],[1091,458],[533,122]])
-coord_h2 = np.array([[928, 534],[893,572],[1729,225]])
+
+# Coordinates palm
+coord_p1 = np.array([[1148, 603],[1061,539],[1155,410], [1244, 526],
+                        [1289, 414], [1312, 350], [1330, 279],  # Coordinates thumb
+                        [1126, 340], [1096, 288], [1060,213], [998, 143],  # Coordinates index
+                        [887, 222], [959, 273], [1009, 331], [1059, 392],  # Coordinates middle
+                        [832, 391], [892, 418], [961, 449], [1016, 472],  # Coordinates ring
+                        [840, 590], [900, 578], [954, 564], [1007, 552]])  # Coordinates  pinkie
+coord_p2 = np.array([[980, 695], [885,636],[931, 535], [1026, 633],
+                        [1037, 533], [1012, 477], [999, 415],  # Coordinates thumb
+                        [899, 480], [860, 436], [825, 398], [785, 353],  # Coordinates index
+                        [856, 523], [805, 482], [756, 443], [717, 414],  # Coordinates middle
+                        [836, 582], [787, 565], [727, 543], [695, 527],  # Coordinates ring
+                        [852, 640], [811, 647], [711, 653], [734, 656]])  # Coordinates pinkie
+
 
 # Use epipoles to find the matching features
 F, mask = cv2.findFundamentalMat(coord1, coord2, cv2.FM_8POINT)
 
-# Extract the camera matrix K from the parameters file, for each camera:
-filename = workingFolder + "/cameraMatrixL.txt"
-K_l = np.loadtxt(filename, dtype='float', delimiter=',')
-filename = workingFolder + "/cameraMatrixR.txt"
-K_r = np.loadtxt(filename, dtype='float', delimiter=',')
-filename = workingFolder + "/cameraDistortionL.txt"
-D_l = np.loadtxt(filename, dtype='float', delimiter=',')
-filename = workingFolder + "/cameraDistortionR.txt"
-D_r = np.loadtxt(filename, dtype='float', delimiter=',')
+
 
 # Function to draw epipolar lines and match circles to images.
 def drawlines(img_a, img_b, lines, pts1, pts2):
@@ -166,109 +172,179 @@ def drawlines(img_a, img_b, lines, pts1, pts2):
 
 # Find epilines corresponding to points in right image (second image) and
 # drawing its lines on left image
-lines1 = cv2.computeCorrespondEpilines(coord_h1.reshape(-1, 1, 2), 1, F)
+lines1 = cv2.computeCorrespondEpilines(coord_p1.reshape(-1, 1, 2), 1, F)
 lines1 = lines1.reshape(-1, 3)
 
 # noinspection PyUnboundLocalVariable
-img5, img6 = drawlines(img[1], img[0], lines1, coord_h2, coord_h1)
+img5, img6 = drawlines(img[1], img[0], lines1, coord_p2, coord_p1)
 
 # Find epilines corresponding to points in left image (first image) and
 # drawing its lines on right image
-lines2 = cv2.computeCorrespondEpilines(coord_h2.reshape(-1, 1, 2), 2, F)
+lines2 = cv2.computeCorrespondEpilines(coord_p2.reshape(-1, 1, 2), 2, F)
 lines2 = lines2.reshape(-1, 3)
-img3, img4 = drawlines(img[0], img[1], lines2, coord_h1, coord_h2)
+img3, img4 = drawlines(img[0], img[1], lines2, coord_p1, coord_p2)
 
 # Save results in results folder
 cv2.imwrite(workingFolder + "/results/img1.png", img5)
 cv2.imwrite(workingFolder + "/results/img2.png", img3)
 
-cv2.imshow('imgNOTRectified1', img3)
-cv2.imshow('imgNOTRectified2', img5)
+cv2.imshow('Epipole lines 1', img3)
+cv2.imshow('Epipole lines 2', img5)
 
-coord1t = coord1.T
-coord2t = coord2.T
+# Calculate depth from the K and diff
 
-E, mask2 = cv2.findEssentialMat(coord1, coord2, focal=1.0, pp=(0., 0.), method=cv2.RANSAC, prob=0.999, threshold=3.0)
+# Extract the camera matrix K from the parameters file, for each camera:
+filename = workingFolder + "/cameraMatrixL.txt"
+K_l = np.loadtxt(filename, dtype='float', delimiter=',')
+filename = workingFolder + "/cameraMatrixR.txt"
+K_r = np.loadtxt(filename, dtype='float', delimiter=',')
 
-E1 = np.zeros((3, 3), dtype=np.float32)
-
-E1 = K_r.T
-E1 = E1.dot(F)
-E1 = K_l.dot(E1)
-
-#R2, t, E, F = cv2.stereoCalibrate()
-points, R, t, mask2 = cv2.recoverPose(E1, coord1, coord2)
-points, R3, t3, mask2 = cv2.recoverPose(E, coord1, coord2)
-
-
-R1, R2, P1, P2, Q, alpha1, alpha2 = cv2.stereoRectify(K_l,D_l,K_r,D_r,(1920,1080),R3,t3,flags = cv2.CALIB_ZERO_DISPARITY)
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-R5 = np.zeros((3, 3), dtype=np.float32)
-R5 = R2
-
-#R3[0][0] = R2[0][2]
-#R3[1][0] = R2[1][2]
-#R3[2][0] = R2[2][2]
-#R2[0][2] = R2[0][0]
-#R2[1][2] = R2[1][0]
-#R2[2][2] = R2[2][0]
-#R2[0][0] = R3[0][0]
-#R2[1][0] = R3[1][0]
-#R2[2][0] = R3[2][0]
-
-#R2 = R2.T
-
-#R3[0][1] = R2[0][1]
-#R2[0][1] = R2[2][1]
-#R2[0][1] = R3[0][1]
-
-#R3[1][0] = R2[2][1]
-#R2[2][1] = R2[1][0]
-#R2[2][1] = R3[1][0]
-
-mapx1, mapy1 = cv2.initUndistortRectifyMap(K_l, D_l, R1, K_l,
-                                               #(1920,1080),
-                                               img[0].shape[:2],
-                                               cv2.CV_32F)
-mapx2, mapy2 = cv2.initUndistortRectifyMap(K_r, D_r, R2, K_r,
-                                               #(1920,1080),
-                                               img[0].shape[:2],
-                                               cv2.CV_32F)
+#       [   fx     0    cx  ]      where    alpha = fx
+# K =   [    0    fy    cy  ]               beta = fy
+#       [    0     0     1  ]               cx = u0, cy = v0
 
 
 
-img_rect1 = cv2.remap(img[0], mapx1, mapy1, cv2.INTER_LINEAR)
-img_rect2 = cv2.remap(img[1], mapx2, mapy2, cv2.INTER_LINEAR)
+# create 3d point arrays
+x_points = np.zeros((coord_p1.shape[0]), dtype=np.float32)
+y_points = np.zeros((coord_p1.shape[0]), dtype=np.float32)
+z_points = np.zeros((coord_p1.shape[0]), dtype=np.float32)
+i = 0
 
-#img_rect2 = cv2.flip(img_rect2, 1)
+for pt1, pt2 in zip(coord_p1, coord_p2):
+    # direction vector of point 1 in image 1
+    #p1 = pt1
+    l1 = np.ones((3, 1), dtype=np.float32)
+    l1[0] = (pt1[0] - K_l[0][2]) / K_l[0][0]
+    l1[1] = (pt1[1] - K_l[1][2]) / K_l[1][1]
 
-# draw the images side by side
-total_size = (max(img_rect1.shape[0], img_rect2.shape[0]),
-              img_rect1.shape[1] + img_rect2.shape[1], 3)
-img_8 = np.zeros(total_size, dtype=np.uint8)
-img_8[:img_rect1.shape[0], :img_rect1.shape[1]] = img_rect1
-img_8[:img_rect2.shape[0], img_rect1.shape[1]:] = img_rect2
+    # direction vector of point 2 in image 2
+    l2 = np.ones((3, 1), dtype=np.float32)
+    l2[0] = (pt2[0] - K_r[0][2]) / K_r[0][0]
+    l2[1] = (pt2[1] - K_r[1][2]) / K_r[1][1]
 
-# draw horizontal lines every 25 px accross the side by side image
-for i in range(20, img_8.shape[0], 25):
-    cv2.line(img_8, (0, i), (img_8.shape[1], i), (255, 0, 0))
+    # calculate theta
+    theta1 = math.atan(122 / 533)
+    theta2 = math.atan(225 / 1729)
 
-cv2.imshow('imgRectified1', img_rect1)
-cv2.imshow('imgRectified2', img_rect2)
-cv2.imshow('imgRectified', img_8)
+    # Translation vector from camera 1 to camera 2
+    t = np.zeros((3, 1), dtype=np.float32)
+    t[0][0] = 1
 
-cv2.imwrite(workingFolder + "/results/img_rect1.png", img_rect1)
-cv2.imwrite(workingFolder + "/results/img_rect2.png", img_rect2)
+    # Compute the magnitude of L1
+    L1_mag = (np.linalg.norm(t)) * math.sin(theta1) / math.sin(theta1 - theta2)
 
-#World coordinates in pixels
-XYZ = np.array([[0],[0],[0],[0]])
-#xyd = np.array([[1091],[458],[198],[1]])
-xyd = np.array([[533],[1729],[2000],[1]])
-XYZ = Q.dot(xyd)
-XYZ[0] = XYZ[0]/XYZ[3]
-XYZ[1] = XYZ[1]/XYZ[3]
-XYZ[2] = XYZ[2]/XYZ[3]
+    # compute 3D reconstruction
+    L1 = np.ones((3, 1), dtype=np.float32)
+    L1 = L1_mag * l1 / np.linalg.norm(l1)
 
+    # Add to 3d_points list
+    x_points[i] = L1[0][0]
+    y_points[i] = L1[1][0]
+    z_points[i] = L1[2][0]
+    i += 1
+
+ax = plt.axes(projection='3d')
+# draw palm line 1
+zline = np.linspace(z_points[0], z_points[1], num=100)
+yline = np.linspace(y_points[0], y_points[1], num=100)
+xline = np.linspace(x_points[0], x_points[1], num=100)
+ax.plot3D(xline, yline, zline, 'gray')
+# draw palm line 2
+zline = np.linspace(z_points[1], z_points[2], num=100)
+yline = np.linspace(y_points[1], y_points[2], num=100)
+xline = np.linspace(x_points[1], x_points[2], num=100)
+ax.plot3D(xline, yline, zline, 'gray')
+# draw palm line 3
+zline = np.linspace(z_points[2], z_points[3], num=100)
+yline = np.linspace(y_points[2], y_points[3], num=100)
+xline = np.linspace(x_points[2], x_points[3], num=100)
+ax.plot3D(xline, yline, zline, 'gray')
+# draw palm line 2
+zline = np.linspace(z_points[3], z_points[0], num=100)
+yline = np.linspace(y_points[3], y_points[0], num=100)
+xline = np.linspace(x_points[3], x_points[0], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw thumb line 1
+zline = np.linspace(z_points[4], z_points[5], num=100)
+yline = np.linspace(y_points[4], y_points[5], num=100)
+xline = np.linspace(x_points[4], x_points[5], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw thumb line 2
+zline = np.linspace(z_points[5], z_points[6], num=100)
+yline = np.linspace(y_points[5], y_points[6], num=100)
+xline = np.linspace(x_points[5], x_points[6], num=100)
+ax.plot3D(xline, yline, zline, 'red')
+# draw index line 1
+zline = np.linspace(z_points[7], z_points[8], num=100)
+yline = np.linspace(y_points[7], y_points[8], num=100)
+xline = np.linspace(x_points[7], x_points[8], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw index line 2
+zline = np.linspace(z_points[8], z_points[9], num=100)
+yline = np.linspace(y_points[8], y_points[9], num=100)
+xline = np.linspace(x_points[8], x_points[9], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw index line 3
+zline = np.linspace(z_points[9], z_points[10], num=100)
+yline = np.linspace(y_points[9], y_points[10], num=100)
+xline = np.linspace(x_points[9], x_points[10], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+
+# draw middle line 1
+zline = np.linspace(z_points[11], z_points[12], num=100)
+yline = np.linspace(y_points[11], y_points[12], num=100)
+xline = np.linspace(x_points[11], x_points[12], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw middle line 2
+zline = np.linspace(z_points[12], z_points[13], num=100)
+yline = np.linspace(y_points[12], y_points[13], num=100)
+xline = np.linspace(x_points[12], x_points[13], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw middle line 3
+zline = np.linspace(z_points[13], z_points[14], num=100)
+yline = np.linspace(y_points[13], y_points[14], num=100)
+xline = np.linspace(x_points[13], x_points[14], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+
+# draw ring line 1
+zline = np.linspace(z_points[15], z_points[16], num=100)
+yline = np.linspace(y_points[15], y_points[16], num=100)
+xline = np.linspace(x_points[15], x_points[16], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw ring line 2
+zline = np.linspace(z_points[16], z_points[17], num=100)
+yline = np.linspace(y_points[16], y_points[17], num=100)
+xline = np.linspace(x_points[16], x_points[17], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw ring line 3
+zline = np.linspace(z_points[17], z_points[18], num=100)
+yline = np.linspace(y_points[17], y_points[18], num=100)
+xline = np.linspace(x_points[17], x_points[18], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+
+# draw pinkie line 1
+zline = np.linspace(z_points[19], z_points[20], num=100)
+yline = np.linspace(y_points[19], y_points[20], num=100)
+xline = np.linspace(x_points[19], x_points[20], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw pinkie line 2
+zline = np.linspace(z_points[20], z_points[21], num=100)
+yline = np.linspace(y_points[20], y_points[21], num=100)
+xline = np.linspace(x_points[20], x_points[21], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+# draw pinkie line 3
+zline = np.linspace(z_points[21], z_points[22], num=100)
+yline = np.linspace(y_points[21], y_points[22], num=100)
+xline = np.linspace(x_points[21], x_points[22], num=100)
+ax.plot3D(xline, yline, zline, 'blue')
+
+# -- Set the Position Relative to Camera 3D Plot
+#ax = plt.axes(projection="3d")
+plt.suptitle('Position Relative to Camera Plot')
+# -- Display the origin as a pink cross
+ax.scatter3D(x_points, y_points, z_points, c='b', marker='P')
+plt.show()
 
 # Press 'q' to exit each image window
 cv2.waitKey(0)
